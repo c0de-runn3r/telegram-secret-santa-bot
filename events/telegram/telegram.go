@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"main/clients/telegram"
 	"main/events"
-	"main/storage"
 )
 
 type Processor struct {
-	tg      *telegram.Client
-	offset  int
-	storage storage.Storage
+	tg     *telegram.Client
+	offset int
 }
 
 type Meta struct {
@@ -24,10 +22,9 @@ var (
 	ErrUnknownMetaType = errors.New("unknown meta type")
 )
 
-func New(client *telegram.Client, storage storage.Storage) *Processor {
+func New(client *telegram.Client) *Processor {
 	return &Processor{
-		tg:      client,
-		storage: storage,
+		tg: client,
 	}
 }
 
