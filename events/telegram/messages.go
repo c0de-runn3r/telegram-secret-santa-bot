@@ -26,6 +26,7 @@ const (
 const (
 	cmdCreateNewGame         = "Створити нову гру"
 	cmdConnectToExistingGame = "Приєднатись до гри"
+	cmdCheckMyGames          = "Переглянути мої ігри"
 	cmdMain                  = "На головну"
 	cmdChangeWishes          = "Додати/змінити побажання"
 )

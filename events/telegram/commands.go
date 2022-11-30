@@ -57,6 +57,8 @@ func (p *Processor) ProcessAction(text string, chatID int, username string) {
 	case cmdConnectToExistingGame:
 		FSM.SetState(*ConnectExistingGameState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendIDOfGame})
+	case cmdCheckMyGames:
+		p.CheckGames(text, chatID, username)
 	default:
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand})
 	}
@@ -87,6 +89,18 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUndefinedGameID})
 		FSM.SetState(*ConnectExistingGameState)
 	}
+}
+
+func (p *Processor) CheckGames(text string, chatID int, username string) {
+	msg := "Твої ігри:"
+	var games []*storage.SantaUser
+	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
+	for i := 0; i < len(games); i++ {
+		if games[i].Game != "" {
+			msg = fmt.Sprintf("%s\n%s", msg, games[i].Game)
+		}
+	}
+	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
 }
 
 func (p *Processor) ChangeGameSettings(text string, chatID int, username string) {
