@@ -63,7 +63,7 @@ func (p *Processor) processMessage(event events.Event) error {
 	if err != nil {
 		return fmt.Errorf("can't process message %w", err)
 	}
-	if err := p.doCmd(event.Text, meta.ChatID, meta.Username); err != nil {
+	if err := p.doMessage(event.Text, meta.ChatID, meta.Username); err != nil {
 		return fmt.Errorf("can't process message %w", err)
 	}
 	return nil

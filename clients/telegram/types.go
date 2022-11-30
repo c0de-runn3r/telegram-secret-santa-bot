@@ -23,3 +23,14 @@ type From struct {
 type Chat struct {
 	ID int `json:"id"`
 }
+
+type ReplyKeyboardMarkup struct {
+	Keyboard              [][]KeyboardButton `json:"keyboard"`
+	ResizeKeyboard        bool               `json:"resize_keyboard"`
+	OneTimeKeyboard       bool               `json:"one_time_keyboard"`
+	InputFieldPlaceholder string             `json:"input_field_placeholder"`
+}
+
+type KeyboardButton struct {
+	Text string `json:"text"`
+}

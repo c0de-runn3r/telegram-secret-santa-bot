@@ -7,6 +7,8 @@ import (
 	tgClient "main/clients/telegram"
 	event_consumer "main/consumer/event-consumer"
 	"main/events/telegram"
+	storage "main/files_storage"
+	"main/fsm"
 
 	"github.com/joho/godotenv"
 )
@@ -22,9 +24,9 @@ func main() {
 		tgClient.New(host, token),
 	)
 	log.Print("service started")
-
+	storage.CreateAndMigrateDB()
 	consumer := event_consumer.New(eventsProcessor, eventsProcessor, batchSize)
-
+	fsm.FSM.SetState(*fsm.ActionState)
 	if err := consumer.Start(); err != nil {
 		log.Fatal("service is stopped", err)
 	}

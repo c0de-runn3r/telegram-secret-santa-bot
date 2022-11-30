@@ -41,11 +41,23 @@ func (c *Client) Updates(offset int, limit int) ([]Update, error) {
 	return res.Result, nil
 }
 
-func (c *Client) SendMessage(chatID int, text string) error {
-	q := url.Values{}
-	q.Add("chat_id", strconv.Itoa(chatID))
-	q.Add("text", text)
+type MessageParams struct {
+	ChatID   int
+	Text     string
+	Keyboard *ReplyKeyboardMarkup
+}
 
+func (c *Client) SendMessage(params MessageParams) error {
+	q := url.Values{}
+	q.Add("chat_id", strconv.Itoa(params.ChatID))
+	q.Add("text", params.Text)
+	if params.Keyboard != nil {
+		jsonKeyboard, err := json.Marshal(params.Keyboard)
+		if err != nil {
+			return err
+		}
+		q.Add("reply_markup", string(jsonKeyboard))
+	}
 	_, err := c.doRequest("sendMessage", q)
 	if err != nil {
 		return fmt.Errorf("can't send message: %w", err)

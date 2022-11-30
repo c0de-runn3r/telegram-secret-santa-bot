@@ -4,5 +4,10 @@ package fsm
 
 var FSM = NewStateMachine()
 
-var HelloState = FSM.NewState("hello")
-var ByeState = FSM.NewState("buy")
+var (
+	ActionState              = FSM.NewState("action")
+	NewGameNameState         = FSM.NewState("newGameName")
+	ConnectExistingGameState = FSM.NewState("connectExistingName")
+	GameSettingsState        = FSM.NewState("gameSettinigsState")
+	UpdateWishesState        = FSM.NewState("updateWishes")
+)
