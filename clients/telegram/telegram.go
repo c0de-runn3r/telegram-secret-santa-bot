@@ -42,17 +42,25 @@ func (c *Client) Updates(offset int, limit int) ([]Update, error) {
 }
 
 type MessageParams struct {
-	ChatID   int
-	Text     string
-	Keyboard *ReplyKeyboardMarkup
+	ChatID         int
+	Text           string
+	KeyboardReply  *ReplyKeyboardMarkup
+	KeyboardInline *InlineKeyboardMarkup
 }
 
 func (c *Client) SendMessage(params MessageParams) error {
 	q := url.Values{}
 	q.Add("chat_id", strconv.Itoa(params.ChatID))
 	q.Add("text", params.Text)
-	if params.Keyboard != nil {
-		jsonKeyboard, err := json.Marshal(params.Keyboard)
+	if params.KeyboardReply != nil {
+		jsonKeyboard, err := json.Marshal(params.KeyboardReply)
+		if err != nil {
+			return err
+		}
+		q.Add("reply_markup", string(jsonKeyboard))
+	}
+	if params.KeyboardInline != nil {
+		jsonKeyboard, err := json.Marshal(params.KeyboardInline)
 		if err != nil {
 			return err
 		}

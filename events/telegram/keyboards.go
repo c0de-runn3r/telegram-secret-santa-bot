@@ -27,3 +27,7 @@ func NewButton(text string) *telegram.KeyboardButton {
 		Text: text,
 	}
 }
+
+func AddButtonToKeyboard(button *telegram.KeyboardButton, keyboard *telegram.ReplyKeyboardMarkup, n int) {
+	keyboard.Keyboard[0] = append(keyboard.Keyboard[0], *button)
+}

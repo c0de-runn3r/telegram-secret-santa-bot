@@ -66,6 +66,11 @@ func (db *DataBase) AddNewGame(name string, username string) uint {
 	})
 	var game Game
 	db.First(&game, "name = ?", name)
+	db.Create(&SantaUser{
+		Username: username,
+		Game:     name,
+		SantaID:  game.ID,
+	})
 	return game.ID
 }
 
@@ -74,6 +79,7 @@ func (db *DataBase) AddUserToGame(game *Game, username string) {
 	db.Create(&SantaUser{
 		Username: username,
 		Game:     game.Name,
+		SantaID:  game.ID,
 	})
 }
 
