@@ -27,7 +27,7 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		FSM.SetState(*ActionState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgCancel, KeyboardReply: &ActionKeyboard})
 	default: // other cases
-		switch state { // state myGamesState --->>> processMyGamesState --->>> if text xxx --->>> settings currGameState
+		switch state {
 		case *ActionState: // actions menu
 			p.ProcessAction(text, chatID, username)
 		case *NewGameNameState: // receive name of the new game
@@ -40,12 +40,35 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 			p.ChooseTheGame(text, chatID, username)
 		// case *GameSettingsState:
 		// 	p.ChangeGameSettings(text, chatID, username)
-		// case *UpdateWishesState:
-		// 	p.UpdateWishes(text, chatID, username)
-		// 	FSM.SetState(*ActionState)
+		case *UpdateWishesState:
+			p.UpdateWishes(text, chatID, username)
+			FSM.SetState(*ActionState)
 		default:
 			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand})
 		}
+	}
+
+	return nil
+}
+
+func (p *Processor) doCallbackQuerry(text string, chatID int, username string) error {
+	log.Printf("got new callback data '%s' from '%s'", text, username)
+	command, id := cutTextToData(text)
+	switch command {
+	case "change_wishes":
+		FSM.SetState(*UpdateWishesState)
+		storage.ListOfWishUpdates.Wishes = append(storage.ListOfWishUpdates.Wishes, &storage.WishUpdateInfo{
+			ID:       id,
+			Username: username})
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID: chatID,
+			Text:   msgAddWishes,
+		})
+	default:
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID: chatID,
+			Text:   msgSmthWrong,
+		})
 	}
 
 	return nil
@@ -129,19 +152,23 @@ func (p *Processor) ChangeGameSettings(text string, chatID int, username string)
 }
 
 func (p *Processor) UpdateWishes(text string, chatID int, username string) {
-	// TODO check to what game add wishes to
-	storage.DB.AddOrUpdateWishes(text, username)
-	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded})
+	for _, match := range storage.ListOfWishUpdates.Wishes {
+		fmt.Printf("here --- %+v", match)
+		if match.Username == username {
+			match.Wish = text
+
+			storage.DB.AddOrUpdateWishes(username)
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded})
+		}
+	}
 }
 
 func ExtractIDFromStringSettings(str string) string {
 	// Налаштування гри: Ім‘я (ID:12345)
 	var re = regexp.MustCompile(`(?m)ID:[0-9]+\)`)
 	var id string
-	for i, match := range re.FindAllString(str, -1) {
-		fmt.Println(match, "found at index", i)
+	for _, match := range re.FindAllString(str, -1) {
 		id = strings.Split(match, ":")[1]
-
 		id = strings.ReplaceAll(id, ")", "")
 	}
 	return id
@@ -161,14 +188,25 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 	msg := fmt.Sprintf("Налаштування гри '%s'", games[0].Game)
 	addWishesButton := telegram.InlineKeyboardButton{
 		Text:         cmdChangeWishes,
-		CallbackData: "change_wishes" + id,
+		CallbackData: "change_wishes " + id,
 	}
 	keyboard := &telegram.InlineKeyboardMarkup{
-		Buttons: [][]telegram.InlineKeyboardButton{{*&addWishesButton}},
+		Buttons: [][]telegram.InlineKeyboardButton{{addWishesButton}},
 	}
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:         chatID,
 		Text:           msg,
 		KeyboardInline: keyboard,
 	})
+}
+
+func cutTextToData(text string) (string, int) {
+	i := strings.Index(text, " ")
+	command := text[:i]
+	idStr := text[i+1:]
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		panic("error converting id to int")
+	}
+	return command, id
 }

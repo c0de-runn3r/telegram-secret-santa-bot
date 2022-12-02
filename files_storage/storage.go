@@ -27,6 +27,18 @@ type DataBase struct {
 	*gorm.DB
 }
 
+type UpdateWishesList struct {
+	Wishes []*WishUpdateInfo
+}
+
+type WishUpdateInfo struct {
+	ID       int
+	Username string
+	Wish     string
+}
+
+var ListOfWishUpdates = UpdateWishesList{}
+
 func NewDB() DataBase {
 	db, err := gorm.Open(sqlite.Open("dataBase.db"), &gorm.Config{})
 	if err != nil {
@@ -83,8 +95,13 @@ func (db *DataBase) AddUserToGame(game *Game, username string) {
 	})
 }
 
-func (db *DataBase) AddOrUpdateWishes(text string, username string) {
-	var user SantaUser
-	db.First(&user, "username = ?", username)
-	db.Model(&user).Update("Wishes", text)
+func (db *DataBase) AddOrUpdateWishes(username string) {
+	for _, wish := range ListOfWishUpdates.Wishes {
+		if wish.Username == username {
+			var user SantaUser
+			db.First(&user, "username = ? AND santa_id = ?", username, wish.ID)
+			db.Model(&user).Update("Wishes", wish.Wish)
+		}
+	}
+
 }

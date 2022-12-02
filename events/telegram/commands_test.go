@@ -28,3 +28,11 @@ func TestExtractIDFromStringSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestCutTextToData(t *testing.T) {
+	str := "change_wishes 5"
+	command, id := cutTextToData(str)
+	assert(t, command, "change_wishes")
+	assert(t, id, 5)
+
+}

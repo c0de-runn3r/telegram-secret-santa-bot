@@ -6,14 +6,23 @@ type UpdateResponce struct {
 }
 
 type Update struct {
-	ID      int              `json:"update_id"`
-	Message *IncomingMessage `json:"message"`
+	ID             int              `json:"update_id"`
+	Message        *IncomingMessage `json:"message"`
+	CallbackQuerry *CallbackQuery   `json:"callback_query"`
 }
 
 type IncomingMessage struct {
 	Text string `json:"text"`
 	From From   `json:"from"`
 	Chat Chat   `json:"chat"`
+}
+
+type CallbackQuery struct {
+	ID      int              `json:"update_id"`
+	From    From             `json:"from"`
+	Message *IncomingMessage `json:"message"`
+	Data    string           `json:"data"`
+	Chat    string           `json:"chat_instance"`
 }
 
 type From struct {
@@ -43,17 +52,4 @@ type InlineKeyboardButton struct {
 	Text         string `json:"text"`
 	CallbackData string `json:"callback_data"`
 	Url          string `json:"url"`
-}
-
-type User struct {
-	ID       int    `json:"id"`
-	IsBot    bool   `json:"is_bot"`
-	Name     string `json:"first_name"`
-	Username string `json:"username"`
-}
-
-type CallbackQuery struct {
-	ID   string `json:"id"`
-	From User   `json:"from"`
-	Data string `json:"callback_data"`
 }
