@@ -18,7 +18,8 @@ var (
 			{*ButtonCheckMyGames},
 			{*ButtonMain},
 		},
-		ResizeKeyboard: true,
+		ResizeKeyboard:  true,
+		OneTimeKeyboard: true,
 	}
 )
 
@@ -29,5 +30,5 @@ func NewButton(text string) *telegram.KeyboardButton {
 }
 
 func AddButtonToKeyboard(button *telegram.KeyboardButton, keyboard *telegram.ReplyKeyboardMarkup, n int) {
-	keyboard.Keyboard[0] = append(keyboard.Keyboard[0], *button)
+	keyboard.Keyboard[n] = append(keyboard.Keyboard[n], *button)
 }

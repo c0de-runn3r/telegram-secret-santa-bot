@@ -3,9 +3,11 @@ package telegram
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"main/clients/telegram"
 	storage "main/files_storage"
@@ -38,8 +40,6 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 			p.ConnectToExistingGame(text, chatID, username)
 		case *MyGamesSate: // receive id to change settings of the game
 			p.ChooseTheGame(text, chatID, username)
-		// case *GameSettingsState:
-		// 	p.ChangeGameSettings(text, chatID, username)
 		case *UpdateWishesState:
 			p.UpdateWishes(text, chatID, username)
 			FSM.SetState(*ActionState)
@@ -64,6 +64,12 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 			ChatID: chatID,
 			Text:   msgAddWishes,
 		})
+	case "all_players":
+		FSM.SetState(*ActionState)
+		p.AllPlayers(id, chatID, username)
+	case "start_game":
+		FSM.SetState(*ActionState)
+		p.StartGame(id, chatID, username)
 	default:
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: chatID,
@@ -92,7 +98,7 @@ func (p *Processor) ProcessAction(text string, chatID int, username string) {
 
 func (p *Processor) CreateNewGame(gameName string, chatID int, username string) {
 	log.Printf("creating new game [%s]", gameName)
-	id := storage.DB.AddNewGame(gameName, username)
+	id := storage.DB.AddNewGame(gameName, username, chatID)
 	msg := fmt.Sprintf("Нову гру %s створено. ID: %v", gameName, id)
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
 }
@@ -110,7 +116,7 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 	if game.ID != 0 {
 		msg := fmt.Sprintf("Вітаю!\nВи приєднались до %s", game.Name)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
-		storage.DB.AddUserToGame(&game, username)
+		storage.DB.AddUserToGame(&game, username, chatID)
 	} else {
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUndefinedGameID})
 		FSM.SetState(*ConnectExistingGameState)
@@ -123,11 +129,9 @@ func (p *Processor) CheckGames(text string, chatID int, username string) {
 	var games []*storage.SantaUser
 	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
 	MyGamesKeyboard := telegram.ReplyKeyboardMarkup{
-		Keyboard: [][]telegram.KeyboardButton{
-			{},
-			{*ButtonMain},
-		},
-		ResizeKeyboard: true,
+		Keyboard:        make([][]telegram.KeyboardButton, len(games)+1),
+		ResizeKeyboard:  true,
+		OneTimeKeyboard: true,
 	}
 	for i := 0; i < len(games); i++ {
 		if games[i].Game != "" {
@@ -137,6 +141,7 @@ func (p *Processor) CheckGames(text string, chatID int, username string) {
 			msg = fmt.Sprintf("%s\n%s", msg, games[i].Game)
 		}
 	}
+	AddButtonToKeyboard(ButtonMain, &MyGamesKeyboard, len(games))
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &MyGamesKeyboard})
 	FSM.SetState(*MyGamesSate)
 }
@@ -153,10 +158,8 @@ func (p *Processor) ChangeGameSettings(text string, chatID int, username string)
 
 func (p *Processor) UpdateWishes(text string, chatID int, username string) {
 	for _, match := range storage.ListOfWishUpdates.Wishes {
-		fmt.Printf("here --- %+v", match)
 		if match.Username == username {
 			match.Wish = text
-
 			storage.DB.AddOrUpdateWishes(username)
 			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded})
 		}
@@ -182,22 +185,91 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 			fmt.Println("Yes")
 		}
 	}
-	id := ExtractIDFromStringSettings(text)
+	id := ExtractIDFromStringSettings(text) // TODO probably need to change id extraction not from last command, but from message to what button connected
 	var games []*storage.SantaUser
 	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
 	msg := fmt.Sprintf("Налаштування гри '%s'", games[0].Game)
+	showAllPlayersButton := telegram.InlineKeyboardButton{
+		Text:         cmdShowAllPlayers,
+		CallbackData: "all_players " + id,
+	}
 	addWishesButton := telegram.InlineKeyboardButton{
 		Text:         cmdChangeWishes,
 		CallbackData: "change_wishes " + id,
 	}
+	startGameButton := telegram.InlineKeyboardButton{
+		Text:         cmdStartGame,
+		CallbackData: "start_game " + id,
+	}
+
 	keyboard := &telegram.InlineKeyboardMarkup{
-		Buttons: [][]telegram.InlineKeyboardButton{{addWishesButton}},
+		Buttons: [][]telegram.InlineKeyboardButton{{showAllPlayersButton}, {addWishesButton}, {startGameButton}},
 	}
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:         chatID,
 		Text:           msg,
 		KeyboardInline: keyboard,
 	})
+}
+func (p *Processor) AllPlayers(gameID int, chatID int, username string) {
+	users, err := storage.DB.QueryAllPlayers(gameID)
+	if err != nil {
+		panic("no users found in this game")
+	}
+	resp := fmt.Sprintln("Список учасників:")
+	for _, user := range users {
+		resp = fmt.Sprintf("%s@%s\n", resp, user.Username)
+	}
+	p.tg.SendMessage(telegram.MessageParams{
+		ChatID:        chatID,
+		Text:          resp,
+		KeyboardReply: &ActionKeyboard,
+	})
+}
+
+func (p *Processor) StartGame(gameID int, chatID int, username string) { // TODO this piece of code is a piece of sh*t. need to change it
+	admin, _ := storage.DB.QueryAdmin(gameID)
+	if username != admin {
+		msgIsNotAdmin := fmt.Sprintf("У вас немає доступу до цієї команди.\nПочати гру може лише @%s", admin)
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID: chatID,
+			Text:   msgIsNotAdmin,
+		})
+		return
+	}
+	list, _ := storage.DB.QueryAllPlayers(gameID)
+	if len(list) < 3 {
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID: chatID,
+			Text:   "Кількість учасників має бути не менше 3",
+		})
+	} else {
+		fmt.Printf("%+v", list)
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
+		fmt.Printf("%+v", list)
+		msg := "Ти даруєш подарунок:\n@"
+		for index, user := range list {
+			if user.Username != username {
+				p.tg.SendMessage(telegram.MessageParams{
+					ChatID: user.ChatID,
+					Text:   msg + user.Username,
+				})
+				log.Printf("game started. sent -->> %s to %s", user.Username, username)
+				remove(list, index)
+			}
+			if user.Username == username {
+				reverse(list)
+				log.Println("reverse")
+				p.tg.SendMessage(telegram.MessageParams{
+					ChatID: user.ChatID,
+					Text:   msg + list[0].Username,
+				})
+				log.Printf("game started. sent -->> %s to %s", msg+list[0].Username, username)
+				remove(list, index)
+			}
+		}
+	}
 }
 
 func cutTextToData(text string) (string, int) {
@@ -209,4 +281,14 @@ func cutTextToData(text string) (string, int) {
 		panic("error converting id to int")
 	}
 	return command, id
+}
+
+func remove(slice []storage.SantaUser, s int) []storage.SantaUser {
+	return append(slice[:s], slice[s+1:]...)
+}
+
+func reverse[S ~[]E, E any](s S) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
 }

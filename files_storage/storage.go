@@ -2,6 +2,8 @@ package storage
 
 import (
 	"log"
+	"math/rand"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -11,14 +13,13 @@ type SantaUser struct {
 	ID       uint `gorm:"primaryKey"`
 	Game     string
 	Username string
-	SantaID  uint
-	IsAdmin  bool
-	Address  string
+	ChatID   int
+	SantaID  int
 	Wishes   string
 }
 
 type Game struct {
-	ID    uint `gorm:"primaryKey"`
+	ID    int
 	Name  string
 	Admin string
 }
@@ -57,22 +58,12 @@ func (db *DataBase) MigrateGame() {
 	db.AutoMigrate(&Game{})
 }
 
-func (db *DataBase) AddNewUser(username string, game string, santaID uint, isAdmin bool, address string, wishes string) {
-	log.Println("adding new user to database Santa")
-	// Create
-	db.Create(&SantaUser{
-		Username: username,
-		Game:     game,
-		SantaID:  santaID,
-		IsAdmin:  isAdmin,
-		Address:  address,
-		Wishes:   wishes,
-	})
-}
-
-func (db *DataBase) AddNewGame(name string, username string) uint {
+func (db *DataBase) AddNewGame(name string, username string, chatID int) int {
 	log.Println("adding new game to database Game")
+	rand.Seed(time.Now().UnixNano())
+	id := rand.Intn(9_999_999-1_000_000) + 1_000_000
 	db.Create(&Game{
+		ID:    id,
 		Name:  name,
 		Admin: username,
 	})
@@ -82,16 +73,18 @@ func (db *DataBase) AddNewGame(name string, username string) uint {
 		Username: username,
 		Game:     name,
 		SantaID:  game.ID,
+		ChatID:   chatID,
 	})
 	return game.ID
 }
 
-func (db *DataBase) AddUserToGame(game *Game, username string) {
+func (db *DataBase) AddUserToGame(game *Game, username string, chatID int) {
 	log.Printf("adding user [%s] to game [%s]", username, game.Name)
 	db.Create(&SantaUser{
 		Username: username,
 		Game:     game.Name,
 		SantaID:  game.ID,
+		ChatID:   chatID,
 	})
 }
 
@@ -104,4 +97,16 @@ func (db *DataBase) AddOrUpdateWishes(username string) {
 		}
 	}
 
+}
+
+func (db *DataBase) QueryAllPlayers(gameID int) ([]SantaUser, error) {
+	var users []SantaUser
+	db.Table("santa_users").Where("santa_id = ?", gameID).Find(&users)
+	return users, nil
+}
+
+func (db *DataBase) QueryAdmin(gameID int) (string, error) {
+	var game Game
+	db.Table("games").Where("id = ?", gameID).First(&game)
+	return game.Admin, nil
 }

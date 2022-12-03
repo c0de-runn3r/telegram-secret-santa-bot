@@ -30,4 +30,6 @@ const (
 	cmdCheckMyGames          = "Переглянути мої ігри"
 	cmdMain                  = "На головну"
 	cmdChangeWishes          = "Додати/змінити побажання"
+	cmdShowAllPlayers        = "Показати всіх учасників"
+	cmdStartGame             = "Розпочати гру"
 )
