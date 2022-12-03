@@ -10,12 +10,12 @@ import (
 )
 
 type SantaUser struct {
-	ID       uint `gorm:"primaryKey"`
-	Game     string
+	ID       int `gorm:"primaryKey"`
 	Username string
-	ChatID   int
 	SantaID  int
 	Wishes   string
+	Game     string
+	ChatID   int
 }
 
 type Game struct {

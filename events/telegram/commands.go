@@ -243,32 +243,15 @@ func (p *Processor) StartGame(gameID int, chatID int, username string) { // TODO
 			ChatID: chatID,
 			Text:   "Кількість учасників має бути не менше 3",
 		})
-	} else {
-		fmt.Printf("%+v", list)
-		rand.Seed(time.Now().UnixNano())
-		rand.Shuffle(len(list), func(i, j int) { list[i], list[j] = list[j], list[i] })
-		fmt.Printf("%+v", list)
-		msg := "Ти даруєш подарунок:\n@"
-		for index, user := range list {
-			if user.Username != username {
-				p.tg.SendMessage(telegram.MessageParams{
-					ChatID: user.ChatID,
-					Text:   msg + user.Username,
-				})
-				log.Printf("game started. sent -->> %s to %s", user.Username, username)
-				remove(list, index)
-			}
-			if user.Username == username {
-				reverse(list)
-				log.Println("reverse")
-				p.tg.SendMessage(telegram.MessageParams{
-					ChatID: user.ChatID,
-					Text:   msg + list[0].Username,
-				})
-				log.Printf("game started. sent -->> %s to %s", msg+list[0].Username, username)
-				remove(list, index)
-			}
-		}
+		return
+	}
+	res := DistributeSantas(gameID)
+	for k, v := range res {
+		msg := fmt.Sprintf("Ти даруєш подарунок @%s", v.Username)
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID: k.ChatID,
+			Text:   msg,
+		})
 	}
 }
 
@@ -283,12 +266,31 @@ func cutTextToData(text string) (string, int) {
 	return command, id
 }
 
-func remove(slice []storage.SantaUser, s int) []storage.SantaUser {
-	return append(slice[:s], slice[s+1:]...)
-}
+func DistributeSantas(gameID int) map[storage.SantaUser]storage.SantaUser {
+	list, _ := storage.DB.QueryAllPlayers(gameID)
+	players := make([]storage.SantaUser, len(list))
+	users := make([]storage.SantaUser, len(list))
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(players), func(i, j int) { players[i], players[j] = players[j], players[i] })
+	copy(players, list)
+	copy(users, list)
+	user_pairs := make(map[storage.SantaUser]storage.SantaUser, len(list))
+	for {
+		if len(players) > 1 {
+			if players[0] != users[0] {
+				user_pairs[players[0]] = users[0]
+				players = players[1:]
+				users = users[1:]
 
-func reverse[S ~[]E, E any](s S) {
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
+			}
+			if players[0] == users[0] {
+				rand.Seed(time.Now().UnixNano())
+				rand.Shuffle(len(players), func(i, j int) { players[i], players[j] = players[j], players[i] })
+			}
+		}
+		if len(players) == 1 {
+			user_pairs[players[0]] = users[0]
+			return user_pairs
+		}
 	}
 }
