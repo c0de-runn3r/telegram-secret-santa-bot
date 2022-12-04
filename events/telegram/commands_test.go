@@ -36,3 +36,20 @@ func TestCutTextToData(t *testing.T) {
 	assert(t, id, 5)
 
 }
+
+func TestCheckIfStartHasID(t *testing.T) {
+	req1 := "/start 1234567"
+	ok, resp1 := checkIfStartHasID(req1)
+	assert(t, ok, true)
+	assert(t, resp1, "1234567")
+
+	req2 := "/help"
+	ok, resp2 := checkIfStartHasID(req2)
+	assert(t, ok, false)
+	assert(t, resp2, "")
+
+	req3 := "Привіт, мене звати Вася"
+	ok, resp3 := checkIfStartHasID(req3)
+	assert(t, ok, false)
+	assert(t, resp3, "")
+}

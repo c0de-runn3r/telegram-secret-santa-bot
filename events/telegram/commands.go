@@ -17,6 +17,12 @@ import (
 func (p *Processor) doMessage(text string, chatID int, username string) error {
 	text = strings.TrimSpace(text)
 	log.Printf("got new command '%s' from '%s'", text, username)
+	ok, startID := checkIfStartHasID(text)
+	if ok {
+		FSM.SetState(*ActionState)
+		p.ConnectToExistingGame(startID, chatID, username)
+		return nil
+	}
 	state := FSM.CurrentState
 	switch text { //for commands
 	case StartCmd: // /start
@@ -30,6 +36,8 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgCancel, KeyboardReply: &ActionKeyboard})
 	default: // other cases
 		switch state {
+		case *StartState:
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendStart})
 		case *ActionState: // actions menu
 			p.ProcessAction(text, chatID, username)
 		case *NewGameNameState: // receive name of the new game
@@ -70,6 +78,9 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 	case "start_game":
 		FSM.SetState(*ActionState)
 		p.StartGame(id, chatID, username)
+	case "quit_game":
+		FSM.SetState(*ActionState)
+		p.QuitGame(id, chatID, username)
 	default:
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: chatID,
@@ -99,8 +110,9 @@ func (p *Processor) ProcessAction(text string, chatID int, username string) {
 func (p *Processor) CreateNewGame(gameName string, chatID int, username string) {
 	log.Printf("creating new game [%s]", gameName)
 	id := storage.DB.AddNewGame(gameName, username, chatID)
-	msg := fmt.Sprintf("Нову гру %s створено. ID: %v", gameName, id)
-	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
+	msg := fmt.Sprintf("Нову гру %s створено. ID: %v\nВідправ це посилання своїм друзям, щоб вони могли приєднатись: https://t.me/BodyaTestGoBot?start=%v", gameName, id, id)
+	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
+	FSM.SetState(*ActionState)
 }
 
 func (p *Processor) ConnectToExistingGame(strID string, chatID int, username string) {
@@ -114,9 +126,18 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 	var game storage.Game
 	storage.DB.First(&game, gameID)
 	if game.ID != 0 {
+		players, _ := storage.DB.QueryAllPlayers(gameID)
+		for _, player := range players {
+			if username == player.Username {
+				p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgAlreadyInGame, KeyboardReply: &ActionKeyboard})
+				FSM.SetState(*ActionState)
+				return
+			}
+		}
+		storage.DB.AddUserToGame(&game, username, chatID)
 		msg := fmt.Sprintf("Вітаю!\nВи приєднались до %s", game.Name)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
-		storage.DB.AddUserToGame(&game, username, chatID)
+		FSM.SetState(*ActionState)
 	} else {
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUndefinedGameID})
 		FSM.SetState(*ConnectExistingGameState)
@@ -124,7 +145,6 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 }
 
 func (p *Processor) CheckGames(text string, chatID int, username string) {
-	// TODO make it look like normal
 	msg := "Твої ігри:"
 	var games []*storage.SantaUser
 	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
@@ -177,33 +197,48 @@ func ExtractIDFromStringSettings(str string) string {
 	return id
 }
 
+func checkIfStartHasID(text string) (bool, string) {
+	if len(text) > 10 {
+		if text[:6] == "/start" {
+			idStr := text[7:]
+			return true, idStr
+		}
+	}
+	return false, ""
+}
+
 func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 	if len(text) > 17 {
 		asRunes := []rune(text)
 		reqStr := string(asRunes[:17])
-		if reqStr == "Налаштування гри:" {
-			fmt.Println("Yes")
+		if reqStr != "Налаштування гри:" {
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand, KeyboardReply: &ActionKeyboard})
+			return
 		}
 	}
-	id := ExtractIDFromStringSettings(text) // TODO probably need to change id extraction not from last command, but from message to what button connected
-	var games []*storage.SantaUser
-	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
-	msg := fmt.Sprintf("Налаштування гри '%s'", games[0].Game)
-	showAllPlayersButton := telegram.InlineKeyboardButton{
+	id := ExtractIDFromStringSettings(text)
+	var game *storage.SantaUser
+	storage.DB.Table("santa_users").Where("santa_id = ?", id).First(&game)
+	msg := fmt.Sprintf("Налаштування гри %s", game.Game)
+	showAllPlayersButton := &telegram.InlineKeyboardButton{
 		Text:         cmdShowAllPlayers,
 		CallbackData: "all_players " + id,
 	}
-	addWishesButton := telegram.InlineKeyboardButton{
+	addWishesButton := &telegram.InlineKeyboardButton{
 		Text:         cmdChangeWishes,
 		CallbackData: "change_wishes " + id,
 	}
-	startGameButton := telegram.InlineKeyboardButton{
+	startGameButton := &telegram.InlineKeyboardButton{
 		Text:         cmdStartGame,
 		CallbackData: "start_game " + id,
 	}
+	quitGameButton := &telegram.InlineKeyboardButton{
+		Text:         cmdQuitGame,
+		CallbackData: "quit_game " + id,
+	}
 
 	keyboard := &telegram.InlineKeyboardMarkup{
-		Buttons: [][]telegram.InlineKeyboardButton{{showAllPlayersButton}, {addWishesButton}, {startGameButton}},
+		Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*startGameButton}, {*quitGameButton}},
 	}
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:         chatID,
@@ -227,7 +262,7 @@ func (p *Processor) AllPlayers(gameID int, chatID int, username string) {
 	})
 }
 
-func (p *Processor) StartGame(gameID int, chatID int, username string) { // TODO this piece of code is a piece of sh*t. need to change it
+func (p *Processor) StartGame(gameID int, chatID int, username string) {
 	admin, _ := storage.DB.QueryAdmin(gameID)
 	if username != admin {
 		msgIsNotAdmin := fmt.Sprintf("У вас немає доступу до цієї команди.\nПочати гру може лише @%s", admin)
@@ -253,6 +288,24 @@ func (p *Processor) StartGame(gameID int, chatID int, username string) { // TODO
 			Text:   msg,
 		})
 	}
+}
+
+func (p *Processor) QuitGame(gameID int, chatID int, username string) {
+	admin, _ := storage.DB.QueryAdmin(gameID)
+	if username == admin {
+		storage.DB.DeleteGameAndAllUsers(gameID)
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID:        chatID,
+			Text:          msgGameDeleted,
+			KeyboardReply: &ActionKeyboard,
+		})
+	}
+	storage.DB.DeleteUserFromGame(username, gameID)
+	p.tg.SendMessage(telegram.MessageParams{
+		ChatID:        chatID,
+		Text:          msgUserDeleted,
+		KeyboardReply: &ActionKeyboard,
+	})
 }
 
 func cutTextToData(text string) (string, int) {

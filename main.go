@@ -26,7 +26,7 @@ func main() {
 	log.Print("service started")
 	storage.CreateAndMigrateDB()
 	consumer := event_consumer.New(eventsProcessor, eventsProcessor, batchSize)
-	fsm.FSM.SetState(*fsm.ActionState)
+	fsm.FSM.SetState(*fsm.StartState)
 	if err := consumer.Start(); err != nil {
 		log.Fatal("service is stopped", err)
 	}

@@ -5,10 +5,10 @@ import (
 )
 
 var (
-	ButtonCreateGame    = NewButton("Створити нову гру")
-	ButtonConnectToGame = NewButton("Приєднатись до гри")
-	ButtonCheckMyGames  = NewButton("Переглянути мої ігри")
-	ButtonMain          = NewButton("На головну")
+	ButtonCreateGame    = NewButton(cmdCreateNewGame)
+	ButtonConnectToGame = NewButton(cmdConnectToExistingGame)
+	ButtonCheckMyGames  = NewButton(cmdCheckMyGames)
+	ButtonMain          = NewButton(cmdMain)
 )
 
 var (

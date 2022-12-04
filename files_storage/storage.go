@@ -110,3 +110,14 @@ func (db *DataBase) QueryAdmin(gameID int) (string, error) {
 	db.Table("games").Where("id = ?", gameID).First(&game)
 	return game.Admin, nil
 }
+
+func (db *DataBase) DeleteUserFromGame(username string, gameID int) {
+	var user SantaUser
+	db.Table("santa_users").Where("username = ? AND santa_id = ?", username, gameID).Delete(&user)
+}
+
+func (db *DataBase) DeleteGameAndAllUsers(gameID int) {
+	db.Table("santa_users").Where("santa_id = ?", gameID).Delete(&SantaUser{})
+	var game Game
+	db.Table("games").Where("id = ?", gameID).Delete(&game)
+}
