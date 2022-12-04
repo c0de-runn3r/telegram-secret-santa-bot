@@ -110,8 +110,10 @@ func (p *Processor) ProcessAction(text string, chatID int, username string) {
 func (p *Processor) CreateNewGame(gameName string, chatID int, username string) {
 	log.Printf("creating new game [%s]", gameName)
 	id := storage.DB.AddNewGame(gameName, username, chatID)
-	msg := fmt.Sprintf("Нову гру %s створено. ID: %v\nВідправ це посилання своїм друзям, щоб вони могли приєднатись: https://t.me/BodyaTestGoBot?start=%v", gameName, id, id)
-	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
+	msg := fmt.Sprintf("Хо-хо-хо!\nНову гру %s створено.\nID: %v\nПерешли наступне повідомлення своїм друзям, щоб вони могли приєднатись.", gameName, id)
+	msg2 := fmt.Sprintf("Хо-хо-хо!\nЗапрошую тебе до гри в Таємного Санту🎅\nПереходь за цим посиланням:\nhttps://t.me/SecretSantaUkrBot?start=%v", id)
+	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
+	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg2, KeyboardReply: &ActionKeyboard})
 	FSM.SetState(*ActionState)
 }
 
@@ -135,7 +137,7 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 			}
 		}
 		storage.DB.AddUserToGame(&game, username, chatID)
-		msg := fmt.Sprintf("Вітаю!\nВи приєднались до %s", game.Name)
+		msg := fmt.Sprintf("Хо-хо-хо!\nТи приєднався до %s\nЩасливого Різдва!\nНе забудь додати wishlist 🎁\n Це можна зробити в налаштуваннях цієї гри ", game.Name)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
 		FSM.SetState(*ActionState)
 	} else {
@@ -145,7 +147,7 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 }
 
 func (p *Processor) CheckGames(text string, chatID int, username string) {
-	msg := "Твої ігри:"
+	msg := "📃 Ось список ігор в яких ти береш участь:"
 	var games []*storage.SantaUser
 	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
 	MyGamesKeyboard := telegram.ReplyKeyboardMarkup{
@@ -181,7 +183,7 @@ func (p *Processor) UpdateWishes(text string, chatID int, username string) {
 		if match.Username == username {
 			match.Wish = text
 			storage.DB.AddOrUpdateWishes(username)
-			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded})
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded, KeyboardReply: &ActionKeyboard})
 		}
 	}
 }
@@ -219,7 +221,7 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 	id := ExtractIDFromStringSettings(text)
 	var game *storage.SantaUser
 	storage.DB.Table("santa_users").Where("santa_id = ?", id).First(&game)
-	msg := fmt.Sprintf("Налаштування гри %s", game.Game)
+	msg := fmt.Sprintf("Ельфи готові виконати будь-яку твою забаганку!\n⚙️ Налаштування гри %s", game.Game)
 	showAllPlayersButton := &telegram.InlineKeyboardButton{
 		Text:         cmdShowAllPlayers,
 		CallbackData: "all_players " + id,
@@ -251,7 +253,7 @@ func (p *Processor) AllPlayers(gameID int, chatID int, username string) {
 	if err != nil {
 		panic("no users found in this game")
 	}
-	resp := fmt.Sprintln("Список учасників:")
+	resp := fmt.Sprintln("📃 Список Сант, а також тих хто чекає своїх подаруночків:")
 	for _, user := range users {
 		resp = fmt.Sprintf("%s@%s\n", resp, user.Username)
 	}
@@ -265,10 +267,19 @@ func (p *Processor) AllPlayers(gameID int, chatID int, username string) {
 func (p *Processor) StartGame(gameID int, chatID int, username string) {
 	admin, _ := storage.DB.QueryAdmin(gameID)
 	if username != admin {
-		msgIsNotAdmin := fmt.Sprintf("У вас немає доступу до цієї команди.\nПочати гру може лише @%s", admin)
+		msgIsNotAdmin := fmt.Sprintf("Ельфи ще очікують списки подарунків!\nПочати гру може лише головний Санта @%s", admin)
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: chatID,
 			Text:   msgIsNotAdmin,
+		})
+		return
+	}
+	var game storage.Game
+	storage.DB.Table("games").Where("id = ?", gameID).First(&game)
+	if game.Rolled {
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID: chatID,
+			Text:   msgGameIsBeenRolled,
 		})
 		return
 	}
@@ -276,13 +287,13 @@ func (p *Processor) StartGame(gameID int, chatID int, username string) {
 	if len(list) < 3 {
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: chatID,
-			Text:   "Кількість учасників має бути не менше 3",
+			Text:   "Кількість Сант має бути не менше 3",
 		})
 		return
 	}
 	res := DistributeSantas(gameID)
 	for k, v := range res {
-		msg := fmt.Sprintf("Ти даруєш подарунок @%s", v.Username)
+		msg := fmt.Sprintf("Хо-хо-хо! Різдвяне чудо!❄️ \nТепер ти - Санта🎅 для @%s\nЙого побажання🎁 такі:\n%s", v.Username, v.Wishes)
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: k.ChatID,
 			Text:   msg,
@@ -328,6 +339,7 @@ func DistributeSantas(gameID int) map[storage.SantaUser]storage.SantaUser {
 	copy(players, list)
 	copy(users, list)
 	user_pairs := make(map[storage.SantaUser]storage.SantaUser, len(list))
+	storage.DB.Table("games").Where("id = ?", gameID).Update("rolled", true)
 	for {
 		if len(players) > 1 {
 			if players[0] != users[0] {

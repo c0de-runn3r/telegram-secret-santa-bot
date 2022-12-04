@@ -19,9 +19,10 @@ type SantaUser struct {
 }
 
 type Game struct {
-	ID    int
-	Name  string
-	Admin string
+	ID     int
+	Name   string
+	Admin  string
+	Rolled bool
 }
 
 type DataBase struct {
@@ -63,9 +64,10 @@ func (db *DataBase) AddNewGame(name string, username string, chatID int) int {
 	rand.Seed(time.Now().UnixNano())
 	id := rand.Intn(9_999_999-1_000_000) + 1_000_000
 	db.Create(&Game{
-		ID:    id,
-		Name:  name,
-		Admin: username,
+		ID:     id,
+		Name:   name,
+		Admin:  username,
+		Rolled: false,
 	})
 	var game Game
 	db.First(&game, "name = ?", name)
