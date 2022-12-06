@@ -2,6 +2,8 @@ package fsm
 
 // to initialize state machine + states
 
+var UserFSMs = make(map[string]*StateMachine)
+
 var FSM = NewStateMachine()
 
 var (

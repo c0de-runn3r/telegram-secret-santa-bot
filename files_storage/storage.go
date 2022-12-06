@@ -22,6 +22,7 @@ type Game struct {
 	ID     int
 	Name   string
 	Admin  string
+	Budget string
 	Rolled bool
 }
 

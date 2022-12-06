@@ -15,24 +15,25 @@ import (
 )
 
 func (p *Processor) doMessage(text string, chatID int, username string) error {
+	userFSM := FindOrCreateUsersFSM(username)
 	text = strings.TrimSpace(text)
 	log.Printf("got new command '%s' from '%s'", text, username)
 	ok, startID := checkIfStartHasID(text)
 	if ok {
-		FSM.SetState(*ActionState)
+		userFSM.SetState(*ActionState)
 		p.ConnectToExistingGame(startID, chatID, username)
 		return nil
 	}
-	state := FSM.CurrentState
+	state := userFSM.CurrentState
 	switch text { //for commands
 	case StartCmd: // /start
-		FSM.SetState(*ActionState)
+		userFSM.SetState(*ActionState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHello, KeyboardReply: &ActionKeyboard})
 	case HelpCmd: // /help
-		FSM.SetState(*ActionState)
+		userFSM.SetState(*ActionState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHelp, KeyboardReply: &ActionKeyboard})
 	case cmdMain: // to the main menu
-		FSM.SetState(*ActionState)
+		userFSM.SetState(*ActionState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgCancel, KeyboardReply: &ActionKeyboard})
 	default: // other cases
 		switch state {
@@ -41,16 +42,16 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		case *ActionState: // actions menu
 			p.ProcessAction(text, chatID, username)
 		case *NewGameNameState: // receive name of the new game
-			FSM.SetState(*ActionState)
+			userFSM.SetState(*ActionState)
 			p.CreateNewGame(text, chatID, username)
 		case *ConnectExistingGameState: // receive id to connect to game
-			FSM.SetState(*ActionState)
+			userFSM.SetState(*ActionState)
 			p.ConnectToExistingGame(text, chatID, username)
 		case *MyGamesSate: // receive id to change settings of the game
 			p.ChooseTheGame(text, chatID, username)
-		case *UpdateWishesState:
+		case *UpdateWishesState: // receive wishes text to update wishes
 			p.UpdateWishes(text, chatID, username)
-			FSM.SetState(*ActionState)
+			userFSM.SetState(*ActionState)
 		default:
 			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand})
 		}
@@ -61,10 +62,11 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 
 func (p *Processor) doCallbackQuerry(text string, chatID int, username string) error {
 	log.Printf("got new callback data '%s' from '%s'", text, username)
+	userFSM := FindOrCreateUsersFSM(username)
 	command, id := cutTextToData(text)
 	switch command {
-	case "change_wishes":
-		FSM.SetState(*UpdateWishesState)
+	case "change_wishes": // create struct with game id and nickname and go to state which receives wishes
+		userFSM.SetState(*UpdateWishesState)
 		storage.ListOfWishUpdates.Wishes = append(storage.ListOfWishUpdates.Wishes, &storage.WishUpdateInfo{
 			ID:       id,
 			Username: username})
@@ -72,14 +74,14 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 			ChatID: chatID,
 			Text:   msgAddWishes,
 		})
-	case "all_players":
-		FSM.SetState(*ActionState)
+	case "all_players": // show list of players
+		userFSM.SetState(*ActionState)
 		p.AllPlayers(id, chatID, username)
-	case "start_game":
-		FSM.SetState(*ActionState)
+	case "start_game": // roll the list
+		userFSM.SetState(*ActionState)
 		p.StartGame(id, chatID, username)
-	case "quit_game":
-		FSM.SetState(*ActionState)
+	case "quit_game": // leave the game
+		userFSM.SetState(*ActionState)
 		p.QuitGame(id, chatID, username)
 	default:
 		p.tg.SendMessage(telegram.MessageParams{
@@ -92,12 +94,13 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 }
 
 func (p *Processor) ProcessAction(text string, chatID int, username string) {
+	userFSM := FindOrCreateUsersFSM(username)
 	switch text {
 	case cmdCreateNewGame:
-		FSM.SetState(*NewGameNameState)
+		userFSM.SetState(*NewGameNameState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgNameNewGame})
 	case cmdConnectToExistingGame:
-		FSM.SetState(*ConnectExistingGameState)
+		userFSM.SetState(*ConnectExistingGameState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendIDOfGame})
 	case cmdCheckMyGames:
 		p.CheckGames(text, chatID, username)
@@ -108,21 +111,25 @@ func (p *Processor) ProcessAction(text string, chatID int, username string) {
 }
 
 func (p *Processor) CreateNewGame(gameName string, chatID int, username string) {
+	userFSM := FindOrCreateUsersFSM(username)
 	log.Printf("creating new game [%s]", gameName)
 	id := storage.DB.AddNewGame(gameName, username, chatID)
 	msg := fmt.Sprintf("Хо-хо-хо!\nНову гру %s створено.\nID: %v\nПерешли наступне повідомлення своїм друзям, щоб вони могли приєднатись.", gameName, id)
 	msg2 := fmt.Sprintf("Хо-хо-хо!\nЗапрошую тебе до гри в Таємного Санту🎅\nПереходь за цим посиланням:\nhttps://t.me/SecretSantaUkrBot?start=%v", id)
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg2, KeyboardReply: &ActionKeyboard})
-	FSM.SetState(*ActionState)
+	userFSM.SetState(*ActionState)
 }
 
+// TODO budget feature
+
 func (p *Processor) ConnectToExistingGame(strID string, chatID int, username string) {
+	userFSM := FindOrCreateUsersFSM(username)
 	gameID, err := strconv.Atoi(strID)
 	if err != nil {
 		log.Println("Can't convert stringID into int")
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendIntNotStr})
-		FSM.SetState(*ConnectExistingGameState)
+		userFSM.SetState(*ConnectExistingGameState)
 		return
 	}
 	var game storage.Game
@@ -132,21 +139,22 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 		for _, player := range players {
 			if username == player.Username {
 				p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgAlreadyInGame, KeyboardReply: &ActionKeyboard})
-				FSM.SetState(*ActionState)
+				userFSM.SetState(*ActionState)
 				return
 			}
 		}
 		storage.DB.AddUserToGame(&game, username, chatID)
 		msg := fmt.Sprintf("Хо-хо-хо!\nТи приєднався до %s\nЩасливого Різдва!\nНе забудь додати wishlist 🎁\n Це можна зробити в налаштуваннях цієї гри ", game.Name)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
-		FSM.SetState(*ActionState)
+		userFSM.SetState(*ActionState)
 	} else {
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUndefinedGameID})
-		FSM.SetState(*ConnectExistingGameState)
+		userFSM.SetState(*ConnectExistingGameState)
 	}
 }
 
 func (p *Processor) CheckGames(text string, chatID int, username string) {
+	userFSM := FindOrCreateUsersFSM(username)
 	msg := "📃 Ось список ігор в яких ти береш участь:"
 	var games []*storage.SantaUser
 	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
@@ -165,13 +173,14 @@ func (p *Processor) CheckGames(text string, chatID int, username string) {
 	}
 	AddButtonToKeyboard(ButtonMain, &MyGamesKeyboard, len(games))
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &MyGamesKeyboard})
-	FSM.SetState(*MyGamesSate)
+	userFSM.SetState(*MyGamesSate)
 }
 
 func (p *Processor) ChangeGameSettings(text string, chatID int, username string) {
+	userFSM := FindOrCreateUsersFSM(username)
 	switch text {
 	case cmdChangeWishes:
-		FSM.SetState(*UpdateWishesState)
+		userFSM.SetState(*UpdateWishesState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgAddWishes})
 	default:
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand})
