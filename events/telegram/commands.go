@@ -226,6 +226,7 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 		}
 	}
 	id := ExtractIDFromStringSettings(text)
+	idInt, _ := strconv.Atoi(id)
 	var game *storage.SantaUser
 	storage.DB.Table("santa_users").Where("santa_id = ?", id).First(&game)
 	msg := fmt.Sprintf("Ельфи готові виконати будь-яку твою забаганку!\n⚙️ Налаштування гри %s", game.Game)
@@ -241,13 +242,27 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 		Text:         cmdStartGame,
 		CallbackData: "start_game " + id,
 	}
+
 	quitGameButton := &telegram.InlineKeyboardButton{
 		Text:         cmdQuitGame,
 		CallbackData: "quit_game " + id,
 	}
+	deleteGameButton := &telegram.InlineKeyboardButton{
+		Text:         cmdDeleteGame,
+		CallbackData: "quit_game " + id,
+	}
 
-	keyboard := &telegram.InlineKeyboardMarkup{
-		Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*startGameButton}, {*quitGameButton}},
+	keyboard := &telegram.InlineKeyboardMarkup{}
+	admin, _ := storage.DB.QueryAdmin(idInt)
+	if username != admin {
+		keyboard = &telegram.InlineKeyboardMarkup{
+			Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*quitGameButton}},
+		}
+	}
+	if username == admin {
+		keyboard = &telegram.InlineKeyboardMarkup{
+			Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*startGameButton}, {*deleteGameButton}},
+		}
 	}
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:         chatID,
@@ -256,13 +271,21 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 	})
 }
 func (p *Processor) AllPlayers(gameID int, chatID int, username string) {
+	admin, _ := storage.DB.QueryAdmin(gameID)
 	users, err := storage.DB.QueryAllPlayers(gameID)
 	if err != nil {
 		panic("no users found in this game")
 	}
-	resp := fmt.Sprintln("📃 Список Сант, а також тих хто чекає своїх подаруночків:")
-	for _, user := range users {
-		resp = fmt.Sprintf("%s@%s\n", resp, user.Username)
+	resp := "📃 Список Сант, а також тих хто чекає своїх подаруночків:\n"
+	if username != admin {
+		for _, user := range users {
+			resp = fmt.Sprintf("%s@%s\n", resp, user.Username)
+		}
+	}
+	if username == admin {
+		for _, user := range users {
+			resp = fmt.Sprintf("%s@%s\n%s\n------------------\n", resp, user.Username, user.Wishes)
+		}
 	}
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:        chatID,
@@ -317,13 +340,14 @@ func (p *Processor) QuitGame(gameID int, chatID int, username string) {
 			Text:          msgGameDeleted,
 			KeyboardReply: &ActionKeyboard,
 		})
+	} else {
+		storage.DB.DeleteUserFromGame(username, gameID)
+		p.tg.SendMessage(telegram.MessageParams{
+			ChatID:        chatID,
+			Text:          msgUserDeleted,
+			KeyboardReply: &ActionKeyboard,
+		})
 	}
-	storage.DB.DeleteUserFromGame(username, gameID)
-	p.tg.SendMessage(telegram.MessageParams{
-		ChatID:        chatID,
-		Text:          msgUserDeleted,
-		KeyboardReply: &ActionKeyboard,
-	})
 }
 
 func cutTextToData(text string) (string, int) {

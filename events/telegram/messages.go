@@ -38,4 +38,5 @@ const (
 	cmdShowAllPlayers        = "Список учасників 📃"
 	cmdStartGame             = "Розпочати гру 🎮"
 	cmdQuitGame              = "Покинути гру 😢"
+	cmdDeleteGame            = "Видалити гру ❌"
 )
