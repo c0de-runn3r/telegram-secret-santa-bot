@@ -12,4 +12,5 @@ var (
 	ConnectExistingGameState = FSM.NewState("connectExistingName")
 	UpdateWishesState        = FSM.NewState("updateWishes")
 	MyGamesSate              = FSM.NewState("myGames")
+	BudgetState              = FSM.NewState("budget")
 )

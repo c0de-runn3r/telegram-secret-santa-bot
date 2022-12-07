@@ -50,6 +50,9 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		case *UpdateWishesState: // receive wishes text to update wishes
 			p.UpdateWishes(text, chatID, username)
 			userFSM.SetState(*ActionState)
+		case *BudgetState: // receive budget sum
+			p.ChangeBudget(text, chatID, username)
+			userFSM.SetState(*ActionState)
 		default:
 			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand})
 		}
@@ -68,10 +71,7 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 		storage.ListOfWishUpdates.Wishes = append(storage.ListOfWishUpdates.Wishes, &storage.WishUpdateInfo{
 			ID:       id,
 			Username: username})
-		p.tg.SendMessage(telegram.MessageParams{
-			ChatID: chatID,
-			Text:   msgAddWishes,
-		})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgAddWishes})
 	case "all_players": // show list of players
 		userFSM.SetState(*ActionState)
 		p.AllPlayers(id, chatID, username)
@@ -81,6 +81,13 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 	case "quit_game": // leave the game
 		userFSM.SetState(*ActionState)
 		p.QuitGame(id, chatID, username)
+	case "change_budget": // change budget
+		userFSM.SetState(*BudgetState)
+		storage.ListOfBudgetUpdates.Budgets = append(storage.ListOfBudgetUpdates.Budgets, &storage.BudgetInfo{
+			ID:       id,
+			Username: username,
+		})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendBudget})
 	default:
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: chatID,
@@ -112,7 +119,7 @@ func (p *Processor) CreateNewGame(gameName string, chatID int, username string) 
 	userFSM := FindOrCreateUsersFSM(username)
 	log.Printf("creating new game [%s]", gameName)
 	id := storage.DB.AddNewGame(gameName, username, chatID)
-	msg := fmt.Sprintf("Хо-хо-хо!\nНову гру %s створено.\nID: %v\nПерешли наступне повідомлення своїм друзям, щоб вони могли приєднатись.", gameName, id)
+	msg := fmt.Sprintf("Хо-хо-хо!\nНову гру %s створено.\nID: %v\nТепер в налаштуваннях гри ти можеш змінити бюджет, побажання, і отримати доступ до адмінських функцій.\nПерешли наступне повідомлення своїм друзям, щоб вони могли приєднатись.", gameName, id)
 	msg2 := fmt.Sprintf("Хо-хо-хо!\nЗапрошую тебе до гри в Таємного Санту🎅\nПереходь за цим посиланням:\nhttps://t.me/SecretSantaUkrBot?start=%v", id)
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg2, KeyboardReply: &ActionKeyboard})
@@ -142,7 +149,7 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 			}
 		}
 		storage.DB.AddUserToGame(&game, username, chatID)
-		msg := fmt.Sprintf("Хо-хо-хо!\nТи приєднався до %s\nЩасливого Різдва!\nНе забудь додати wishlist 🎁\n Це можна зробити в налаштуваннях цієї гри ", game.Name)
+		msg := fmt.Sprintf("Хо-хо-хо!\nТи приєднався до %s\nЩасливого Різдва!\nНе забудь додати побажання 🎁\nБюджет цієї гри: %s\n Це можна зробити в налаштуваннях цієї гри ", game.Name, game.Budget)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
 		userFSM.SetState(*ActionState)
 	} else {
@@ -242,7 +249,10 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 		Text:         cmdStartGame,
 		CallbackData: "start_game " + id,
 	}
-
+	changeBudgetButton := &telegram.InlineKeyboardButton{
+		Text:         cmdChangeBudget,
+		CallbackData: "change_budget " + id,
+	}
 	quitGameButton := &telegram.InlineKeyboardButton{
 		Text:         cmdQuitGame,
 		CallbackData: "quit_game " + id,
@@ -261,7 +271,7 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 	}
 	if username == admin {
 		keyboard = &telegram.InlineKeyboardMarkup{
-			Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*startGameButton}, {*deleteGameButton}},
+			Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*changeBudgetButton}, {*startGameButton}, {*deleteGameButton}},
 		}
 	}
 	p.tg.SendMessage(telegram.MessageParams{
@@ -323,7 +333,7 @@ func (p *Processor) StartGame(gameID int, chatID int, username string) {
 	}
 	res := DistributeSantas(gameID)
 	for k, v := range res {
-		msg := fmt.Sprintf("Хо-хо-хо! Різдвяне чудо!❄️ \nТепер ти - Санта🎅 для @%s\nЙого побажання🎁 такі:\n%s", v.Username, v.Wishes)
+		msg := fmt.Sprintf("Хо-хо-хо! Різдвяне чудо!❄️\nГра %s розпочалась!\nТепер ти - Санта🎅 для @%s\nЙого побажання🎁 такі:\n%s\nНагадаю, що бюджет гри: %s", game.Name, v.Username, v.Wishes, game.Budget)
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID: k.ChatID,
 			Text:   msg,
@@ -347,6 +357,15 @@ func (p *Processor) QuitGame(gameID int, chatID int, username string) {
 			Text:          msgUserDeleted,
 			KeyboardReply: &ActionKeyboard,
 		})
+	}
+}
+func (p *Processor) ChangeBudget(budget string, chatID int, username string) {
+	for _, match := range storage.ListOfBudgetUpdates.Budgets {
+		if match.Username == username {
+			match.Budget = budget
+			storage.DB.AddOrUpdateBudget(username)
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgBudgetUpdated, KeyboardReply: &ActionKeyboard})
+		}
 	}
 }
 

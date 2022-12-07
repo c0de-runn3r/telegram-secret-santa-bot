@@ -40,7 +40,19 @@ type WishUpdateInfo struct {
 	Wish     string
 }
 
-var ListOfWishUpdates = UpdateWishesList{}
+var ListOfWishUpdates = UpdateWishesList{} // TODO delete wishes from list after updating db
+
+type UpdateBudgetsList struct {
+	Budgets []*BudgetInfo
+}
+
+type BudgetInfo struct {
+	ID       int
+	Username string
+	Budget   string
+}
+
+var ListOfBudgetUpdates = UpdateBudgetsList{} // TODO delete budgets from list after updating db
 
 func NewDB() DataBase {
 	db, err := gorm.Open(sqlite.Open("dataBase.db"), &gorm.Config{})
@@ -99,7 +111,16 @@ func (db *DataBase) AddOrUpdateWishes(username string) {
 			db.Model(&user).Update("Wishes", wish.Wish)
 		}
 	}
+}
 
+func (db *DataBase) AddOrUpdateBudget(username string) {
+	for _, budget := range ListOfBudgetUpdates.Budgets {
+		if budget.Username == username {
+			var game Game
+			db.First(&game, "id = ?", budget.ID)
+			db.Model(&game).Update("budget", budget.Budget)
+		}
+	}
 }
 
 func (db *DataBase) QueryAllPlayers(gameID int) ([]SantaUser, error) {
