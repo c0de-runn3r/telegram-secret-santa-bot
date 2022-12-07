@@ -35,12 +35,11 @@ func (sm *StateMachine) SetState(state State) {
 }
 
 func FindOrCreateUsersFSM(username string) *StateMachine {
-	for k, v := range UserFSMs {
-		if k == username {
-			return v
-		}
+	FSM, ok := UserFSMs[username]
+	if !ok {
+		FSM = NewStateMachine()
+		UserFSMs[username] = FSM
+		FSM.SetState(*ActionState)
 	}
-	newFSM := NewStateMachine()
-	UserFSMs[username] = newFSM
-	return newFSM
+	return FSM
 }

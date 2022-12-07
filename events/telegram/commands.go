@@ -37,8 +37,6 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgCancel, KeyboardReply: &ActionKeyboard})
 	default: // other cases
 		switch state {
-		case *StartState:
-			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendStart})
 		case *ActionState: // actions menu
 			p.ProcessAction(text, chatID, username)
 		case *NewGameNameState: // receive name of the new game
