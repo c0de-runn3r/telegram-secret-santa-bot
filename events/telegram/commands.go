@@ -25,12 +25,10 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		return nil
 	}
 	state := userFSM.CurrentState
-	keyboard := makeActionKeyboard(username)
-	fmt.Printf("%+v", keyboard)
 	switch text { //for commands
 	case StartCmd: // /start
 		userFSM.SetState(*ActionState)
-		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHello})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHello, KeyboardReply: makeActionKeyboard(username)})
 	case HelpCmd: // /help
 		userFSM.SetState(*ActionState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHelp, KeyboardReply: makeActionKeyboard(username)})
