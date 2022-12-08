@@ -17,7 +17,7 @@ func makeActionKeyboard(username string) *telegram.ReplyKeyboardMarkup {
 	var games []*storage.SantaUser
 	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
 	keyboard := &telegram.ReplyKeyboardMarkup{
-		Keyboard:        make([][]telegram.KeyboardButton, len(games)+1),
+		Keyboard:        make([][]telegram.KeyboardButton, len(games)+2),
 		ResizeKeyboard:  true,
 		OneTimeKeyboard: true,
 	}
@@ -29,7 +29,7 @@ func makeActionKeyboard(username string) *telegram.ReplyKeyboardMarkup {
 		}
 	}
 	AddButtonToKeyboard(ButtonCreateGame, keyboard, 0)
-	AddButtonToKeyboard(ButtonMain, keyboard, len(games))
+	AddButtonToKeyboard(ButtonMain, keyboard, len(games)+1)
 	return keyboard
 }
 
