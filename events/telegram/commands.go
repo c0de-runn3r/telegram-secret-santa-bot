@@ -25,16 +25,18 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		return nil
 	}
 	state := userFSM.CurrentState
+	keyboard := makeActionKeyboard(username)
+	fmt.Printf("%+v", keyboard)
 	switch text { //for commands
 	case StartCmd: // /start
 		userFSM.SetState(*ActionState)
-		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHello, KeyboardReply: &ActionKeyboard})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHello})
 	case HelpCmd: // /help
 		userFSM.SetState(*ActionState)
-		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHelp, KeyboardReply: &ActionKeyboard})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgHelp, KeyboardReply: makeActionKeyboard(username)})
 	case cmdMain: // to the main menu
 		userFSM.SetState(*ActionState)
-		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgCancel, KeyboardReply: &ActionKeyboard})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgCancel, KeyboardReply: makeActionKeyboard(username)})
 	default: // other cases
 		switch state {
 		case *ActionState: // actions menu
@@ -42,9 +44,6 @@ func (p *Processor) doMessage(text string, chatID int, username string) error {
 		case *NewGameNameState: // receive name of the new game
 			userFSM.SetState(*ActionState)
 			p.CreateNewGame(text, chatID, username)
-		case *ConnectExistingGameState: // receive id to connect to game
-			userFSM.SetState(*ActionState)
-			p.ConnectToExistingGame(text, chatID, username)
 		case *MyGamesSate: // receive id to change settings of the game
 			p.ChooseTheGame(text, chatID, username)
 		case *UpdateWishesState: // receive wishes text to update wishes
@@ -100,15 +99,18 @@ func (p *Processor) doCallbackQuerry(text string, chatID int, username string) e
 
 func (p *Processor) ProcessAction(text string, chatID int, username string) {
 	userFSM := FindOrCreateUsersFSM(username)
+	if len(text) > 17 {
+		asRunes := []rune(text)
+		reqStr := string(asRunes[:17])
+		if reqStr == "Налаштування гри:" {
+			p.ChooseTheGame(text, chatID, username)
+			return
+		}
+	}
 	switch text {
 	case cmdCreateNewGame:
 		userFSM.SetState(*NewGameNameState)
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgNameNewGame})
-	case cmdConnectToExistingGame:
-		userFSM.SetState(*ConnectExistingGameState)
-		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSendIDOfGame})
-	case cmdCheckMyGames:
-		p.CheckGames(text, chatID, username)
 	default:
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand})
 	}
@@ -122,7 +124,7 @@ func (p *Processor) CreateNewGame(gameName string, chatID int, username string) 
 	msg := fmt.Sprintf("Хо-хо-хо!\nНову гру %s створено.\nID: %v\nТепер в налаштуваннях гри ти можеш змінити бюджет, побажання, і отримати доступ до адмінських функцій.\nПерешли наступне повідомлення своїм друзям, щоб вони могли приєднатись.", gameName, id)
 	msg2 := fmt.Sprintf("Хо-хо-хо!\nЗапрошую тебе до гри в Таємного Санту🎅\nПереходь за цим посиланням:\nhttps://t.me/SecretSantaUkrBot?start=%v", id)
 	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg})
-	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg2, KeyboardReply: &ActionKeyboard})
+	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg2, KeyboardReply: makeActionKeyboard(username)})
 	userFSM.SetState(*ActionState)
 }
 
@@ -143,42 +145,19 @@ func (p *Processor) ConnectToExistingGame(strID string, chatID int, username str
 		players, _ := storage.DB.QueryAllPlayers(gameID)
 		for _, player := range players {
 			if username == player.Username {
-				p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgAlreadyInGame, KeyboardReply: &ActionKeyboard})
+				p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgAlreadyInGame, KeyboardReply: makeActionKeyboard(username)})
 				userFSM.SetState(*ActionState)
 				return
 			}
 		}
 		storage.DB.AddUserToGame(&game, username, chatID)
 		msg := fmt.Sprintf("Хо-хо-хо!\nТи приєднався до %s\nЩасливого Різдва!\nНе забудь додати побажання 🎁\nБюджет цієї гри: %s\n Це можна зробити в налаштуваннях цієї гри ", game.Name, game.Budget)
-		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &ActionKeyboard})
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: makeActionKeyboard(username)})
 		userFSM.SetState(*ActionState)
 	} else {
 		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUndefinedGameID})
 		userFSM.SetState(*ConnectExistingGameState)
 	}
-}
-
-func (p *Processor) CheckGames(text string, chatID int, username string) {
-	userFSM := FindOrCreateUsersFSM(username)
-	msg := "📃 Ось список ігор в яких ти береш участь:"
-	var games []*storage.SantaUser
-	storage.DB.Table("santa_users").Where("username = ?", username).Find(&games)
-	MyGamesKeyboard := telegram.ReplyKeyboardMarkup{
-		Keyboard:        make([][]telegram.KeyboardButton, len(games)+1),
-		ResizeKeyboard:  true,
-		OneTimeKeyboard: true,
-	}
-	for i := 0; i < len(games); i++ {
-		if games[i].Game != "" {
-			buttonName := fmt.Sprintf("Налаштування гри: %s (ID:%v)", games[i].Game, games[i].SantaID)
-			button := NewButton(buttonName)
-			AddButtonToKeyboard(button, &MyGamesKeyboard, i)
-			msg = fmt.Sprintf("%s\n%s", msg, games[i].Game)
-		}
-	}
-	AddButtonToKeyboard(ButtonMain, &MyGamesKeyboard, len(games))
-	p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msg, KeyboardReply: &MyGamesKeyboard})
-	userFSM.SetState(*MyGamesSate)
 }
 
 func (p *Processor) ChangeGameSettings(text string, chatID int, username string) {
@@ -197,7 +176,7 @@ func (p *Processor) UpdateWishes(text string, chatID int, username string) {
 		if match.Username == username {
 			match.Wish = text
 			storage.DB.AddOrUpdateWishes(username)
-			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded, KeyboardReply: &ActionKeyboard})
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgWishesAdded, KeyboardReply: makeActionKeyboard(username)})
 		}
 	}
 }
@@ -228,79 +207,38 @@ func (p *Processor) ChooseTheGame(text string, chatID int, username string) {
 		asRunes := []rune(text)
 		reqStr := string(asRunes[:17])
 		if reqStr != "Налаштування гри:" {
-			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand, KeyboardReply: &ActionKeyboard})
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgUnknownCommand, KeyboardReply: makeActionKeyboard(username)})
 			return
 		}
 	}
 	id := ExtractIDFromStringSettings(text)
-	idInt, _ := strconv.Atoi(id)
+	keyboard := createSettingsKeyboard(text, username, id)
 	var game *storage.SantaUser
 	storage.DB.Table("santa_users").Where("santa_id = ?", id).First(&game)
 	msg := fmt.Sprintf("Ельфи готові виконати будь-яку твою забаганку!\n⚙️ Налаштування гри %s", game.Game)
-	showAllPlayersButton := &telegram.InlineKeyboardButton{
-		Text:         cmdShowAllPlayers,
-		CallbackData: "all_players " + id,
-	}
-	addWishesButton := &telegram.InlineKeyboardButton{
-		Text:         cmdChangeWishes,
-		CallbackData: "change_wishes " + id,
-	}
-	startGameButton := &telegram.InlineKeyboardButton{
-		Text:         cmdStartGame,
-		CallbackData: "start_game " + id,
-	}
-	changeBudgetButton := &telegram.InlineKeyboardButton{
-		Text:         cmdChangeBudget,
-		CallbackData: "change_budget " + id,
-	}
-	quitGameButton := &telegram.InlineKeyboardButton{
-		Text:         cmdQuitGame,
-		CallbackData: "quit_game " + id,
-	}
-	deleteGameButton := &telegram.InlineKeyboardButton{
-		Text:         cmdDeleteGame,
-		CallbackData: "quit_game " + id,
-	}
 
-	keyboard := &telegram.InlineKeyboardMarkup{}
-	admin, _ := storage.DB.QueryAdmin(idInt)
-	if username != admin {
-		keyboard = &telegram.InlineKeyboardMarkup{
-			Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*quitGameButton}},
-		}
-	}
-	if username == admin {
-		keyboard = &telegram.InlineKeyboardMarkup{
-			Buttons: [][]telegram.InlineKeyboardButton{{*showAllPlayersButton}, {*addWishesButton}, {*changeBudgetButton}, {*startGameButton}, {*deleteGameButton}},
-		}
-	}
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:         chatID,
 		Text:           msg,
 		KeyboardInline: keyboard,
 	})
 }
+
 func (p *Processor) AllPlayers(gameID int, chatID int, username string) {
-	admin, _ := storage.DB.QueryAdmin(gameID)
 	users, err := storage.DB.QueryAllPlayers(gameID)
 	if err != nil {
 		panic("no users found in this game")
 	}
 	resp := "📃 Список Сант, а також тих хто чекає своїх подаруночків:\n"
-	if username != admin {
-		for _, user := range users {
-			resp = fmt.Sprintf("%s@%s\n", resp, user.Username)
-		}
+
+	for _, user := range users {
+		resp = fmt.Sprintf("%s@%s\n", resp, user.Username)
 	}
-	if username == admin {
-		for _, user := range users {
-			resp = fmt.Sprintf("%s@%s\n%s\n------------------\n", resp, user.Username, user.Wishes)
-		}
-	}
+
 	p.tg.SendMessage(telegram.MessageParams{
 		ChatID:        chatID,
 		Text:          resp,
-		KeyboardReply: &ActionKeyboard,
+		KeyboardReply: makeActionKeyboard(username),
 	})
 }
 
@@ -348,14 +286,14 @@ func (p *Processor) QuitGame(gameID int, chatID int, username string) {
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID:        chatID,
 			Text:          msgGameDeleted,
-			KeyboardReply: &ActionKeyboard,
+			KeyboardReply: makeActionKeyboard(username),
 		})
 	} else {
 		storage.DB.DeleteUserFromGame(username, gameID)
 		p.tg.SendMessage(telegram.MessageParams{
 			ChatID:        chatID,
 			Text:          msgUserDeleted,
-			KeyboardReply: &ActionKeyboard,
+			KeyboardReply: makeActionKeyboard(username),
 		})
 	}
 }
@@ -364,7 +302,7 @@ func (p *Processor) ChangeBudget(budget string, chatID int, username string) {
 		if match.Username == username {
 			match.Budget = budget
 			storage.DB.AddOrUpdateBudget(username)
-			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgBudgetUpdated, KeyboardReply: &ActionKeyboard})
+			p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgBudgetUpdated, KeyboardReply: makeActionKeyboard(username)})
 		}
 	}
 }
