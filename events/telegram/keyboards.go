@@ -21,11 +21,11 @@ func makeActionKeyboard(username string) *telegram.ReplyKeyboardMarkup {
 		ResizeKeyboard:  true,
 		OneTimeKeyboard: true,
 	}
-	for i := 1; i < len(games); i++ {
+	for i := 0; i < len(games); i++ {
 		if games[i].Game != "" {
 			buttonName := fmt.Sprintf("Налаштування гри: %s (ID:%v)", games[i].Game, games[i].SantaID)
 			button := NewButton(buttonName)
-			AddButtonToKeyboard(button, keyboard, i)
+			AddButtonToKeyboard(button, keyboard, i+1)
 		}
 	}
 	AddButtonToKeyboard(ButtonCreateGame, keyboard, 0)
