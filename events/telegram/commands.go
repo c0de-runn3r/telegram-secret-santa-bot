@@ -15,6 +15,10 @@ import (
 )
 
 func (p *Processor) doMessage(text string, chatID int, username string) error {
+	if username == "" {
+		p.tg.SendMessage(telegram.MessageParams{ChatID: chatID, Text: msgSetNickname})
+		return nil
+	}
 	userFSM := FindOrCreateUsersFSM(username)
 	text = strings.TrimSpace(text)
 	log.Printf("got new command '%s' from '%s'", text, username)
